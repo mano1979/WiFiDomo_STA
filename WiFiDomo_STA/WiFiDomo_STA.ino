@@ -134,7 +134,7 @@ void handleRoot() {
 
 void handleStatus() {
   Serial.println("Handle Status..");
-  String result = "[" + currentColor[0] + ":" + currentColor[1] +":"+ currentColor[2] + "]";
+  String result = ('[' + String(currentColor[0]) + ':' + String(currentColor[1]) +':'+ String(currentColor[2]) + ']');
   webServer.send(200, "text/html", result);
 }
 
