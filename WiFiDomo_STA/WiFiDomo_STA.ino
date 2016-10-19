@@ -132,6 +132,19 @@ void handleRoot() {
   webServer.send(200, "text/html", webpage);
 }
 
+void handleSwitch(){
+  Serial.println("handle WFD-Switch..");
+  webServer.send(200, "text/html");
+  int i;
+  for (i = 0; i < 3; i++) {
+    String val = webServer.arg(i);
+    if (val != "") {
+      targetColor[i] = val.toInt();
+    }
+  }
+  adjustColor();
+}
+
 void handleStatus() {
   Serial.println("Handle Status..");
   String result = ('[' + String(currentColor[0]) + ':' + String(currentColor[1]) +':'+ String(currentColor[2]) + ']');
@@ -159,41 +172,12 @@ void testRGB() {
   fade(BLUEPIN); // B
 }
 
-void Blink(){
-  analogWrite(REDPIN, 1023); // R on
-  analogWrite(GREENPIN, 1023); // G on
-  analogWrite(BLUEPIN, 1023); // B on
-  delay(500);
-  analogWrite(REDPIN, 0); // R off
-  analogWrite(GREENPIN, 0); // G off
-  analogWrite(BLUEPIN, 0); // B off
-  delay(500);
-  analogWrite(REDPIN, 1023); // R on
-  analogWrite(GREENPIN, 1023); // G on
-  analogWrite(BLUEPIN, 1023); // B on
-  delay(500);
-  analogWrite(REDPIN, 0); // R off
-  analogWrite(GREENPIN, 0); // G off
-  analogWrite(BLUEPIN, 0); // B off
-  delay(500);
-  analogWrite(REDPIN, 1023); // R on
-  analogWrite(GREENPIN, 1023); // G on
-  analogWrite(BLUEPIN, 1023); // B on
-  delay(500);
-  analogWrite(REDPIN, 0); // R off
-  analogWrite(GREENPIN, 0); // G off
-  analogWrite(BLUEPIN, 0); // B off
-}
-
-
 void setup() {
   webServer.stop();
   // put your setup code here, to run once:
   Serial.begin(115200);
   Serial.println("\n Starting");
-
   EEPROM.begin(4);
-
   int i;
   for (i = 0; i < NR_LEN; i++)
      savedNr[i] = EEPROM.read(i);
@@ -303,6 +287,7 @@ wifiManager.addParameter(&custom_host_nr_choice);
     MDNS.addService("http", "tcp", 53);
     webServer.on("/", handleRoot);
     webServer.on("/status", handleStatus);
+    webServer.on("/switch", handleSwitch);
     webServer.begin();
     testRGB();
     Mode = 1;
