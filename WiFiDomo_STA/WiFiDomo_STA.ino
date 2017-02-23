@@ -138,6 +138,19 @@ void handleStatus() {
   webServer.send(200, "text/html", result);
 }
 
+void handleSwitch() {
+  webServer.send(200, "text/html");
+  Serial.println("Handle Switch..");
+  int i;
+  for (i = 0; i < 3; i++) {
+    String val = webServer.arg(i);
+    if (val != "") {
+      targetColor[i] = val.toInt();
+    }
+  }
+  adjustColor();
+}
+
 void fade(int pin) {
   for (int u = 0; u < 1024; u++) {
     analogWrite(pin, u);
@@ -303,6 +316,7 @@ wifiManager.addParameter(&custom_host_nr_choice);
     MDNS.addService("http", "tcp", 53);
     webServer.on("/", handleRoot);
     webServer.on("/status", handleStatus);
+    webServer.on("/switch", handleStatus);    
     webServer.begin();
     testRGB();
     Mode = 1;
