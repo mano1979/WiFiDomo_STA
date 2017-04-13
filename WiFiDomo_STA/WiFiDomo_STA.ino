@@ -23,7 +23,15 @@ int Mode = 0;
 const int REDPIN = 4;   // Do not change!
 const int GREENPIN = 5; // Do not change!
 const int BLUEPIN = 12; // Do not change!
+const int SENSORPIN = 13; // Do not change!
 
+int sensing = 0;
+int ms = 0;
+int s = 0;
+int m = 0;
+int colorMemR = 1023;
+int colorMemG = 900;
+int colorMemB = 0;
 int currentColor[3] = {1023, 1023, 1023};
 int targetColor[3] = {1023, 1023, 1023};
 const int colorPin[3] = {REDPIN, GREENPIN, BLUEPIN};
@@ -129,26 +137,64 @@ void handleRoot() {
     }
   }
   adjustColor();
-  webServer.send(200, "text/html", webpage);
-}
-
-void handleSwitch(){
-  Serial.println("handle WFD-Switch..");
-  webServer.send(200, "text/html");
-  int i;
-  for (i = 0; i < 3; i++) {
-    String val = webServer.arg(i);
-    if (val != "") {
-      targetColor[i] = val.toInt();
-    }
+  if((targetColor[0] == 1023) and (targetColor[1] == 1023) and (targetColor[2] == 1023)){
+    sensing = 0;
   }
-  adjustColor();
+  else{
+    colorMemR = targetColor[0];
+    colorMemG = targetColor[1];
+    colorMemB = targetColor[2];
+    sensing = 1;
+  }
+  webServer.send(200, "text/html", webpage); 
 }
 
 void handleStatus() {
   Serial.println("Handle Status..");
   String result = ('[' + String(currentColor[0]) + ':' + String(currentColor[1]) +':'+ String(currentColor[2]) + ']');
   webServer.send(200, "text/html", result);
+}
+
+void handleSwitch() {
+  int i;
+  Serial.println("Handle Switch..");
+  for (i = 0; i < 3; i++) {
+    String val = webServer.arg(i);
+    if (val != "") {
+      targetColor[i] = val.toInt();
+    }
+  }
+  webServer.send(200, "text/html");
+  adjustColor();
+  if ((currentColor[0] != 0) and (currentColor[1] != 0) and (currentColor[2] != 0)){
+    colorMemR = currentColor[0];
+    colorMemG = currentColor[1];
+    colorMemB = currentColor[2];
+    sensing = 1;
+  }
+  else{
+    sensing = 0;
+  }
+}
+
+void sensorTriggered(){
+  Serial.println("triggered!");
+  //if ((currentColor[0] == 0) and (currentColor[1] == 0) and (currentColor[2] == 0)){
+  targetColor[0] = colorMemR;
+  targetColor[1] = colorMemG;
+  targetColor[2] = colorMemB;
+  ms = 0;
+  s = 0;
+  m = 0;
+  adjustColor();
+  //}
+}
+
+void timeToOff(){
+  targetColor[0] = 1023;
+  targetColor[1] = 1023;
+  targetColor[2] = 1023;
+  adjustColor();
 }
 
 void fade(int pin) {
@@ -177,12 +223,15 @@ void setup() {
   // put your setup code here, to run once:
   Serial.begin(115200);
   Serial.println("\n Starting");
+
   EEPROM.begin(4);
+
   int i;
   for (i = 0; i < NR_LEN; i++)
      savedNr[i] = EEPROM.read(i);
 
   pinMode(TRIGGER_PIN, INPUT);
+  pinMode(SENSORPIN, INPUT);
 }
 
 void checkAndSaveNr(const char *newNr) {
@@ -227,19 +276,6 @@ wifiManager.addParameter(&custom_host_nr);
 wifiManager.addParameter(&custom_host_nr_choice);
 
     analogWrite(REDPIN, 1023);
-
-    //Blink();
-    
-    //sets timeout until configuration portal gets turned off
-    //useful to make it all retry or go to sleep
-    //in seconds
-    //wifiManager.setTimeout(120);
-
-    //WITHOUT THIS THE AP DOES NOT SEEM TO WORK PROPERLY WITH SDK 1.5 , update to at least 1.5.1
-    //WiFi.mode(WIFI_STA);
-
-    //it starts an access point with the specified name
-    //here  "WiFiDomo"
     //and goes into a blocking loop awaiting configuration
     if (!wifiManager.startConfigPortal("WiFiDomo")) {
       Serial.println("failed to connect and hit timeout");
@@ -268,7 +304,6 @@ wifiManager.addParameter(&custom_host_nr_choice);
       delay(1000);
       Mode = 0;
       analogWrite(REDPIN, 1023);
-      //Blink();
       wifiManager.addParameter(&custom_host_nr);
       wifiManager.addParameter(&custom_host_nr_choice);
 
@@ -294,7 +329,35 @@ wifiManager.addParameter(&custom_host_nr_choice);
     MDNS.update();
   }
   if(Mode == 1){
+    sensing = 1;
+    if(sensing == 1){
+      if(digitalRead(SENSORPIN)==HIGH){
+        sensorTriggered();
+        delay(1000); //debounce
+      }
+      ms=ms+1;
+      if(ms == 1000){
+        s=s+1;
+        ms = 0;
+      }
+      if(s == 60){
+        m=m+1;
+        s = 0;
+        
+      }
+      if(m == 15){
+        timeToOff();
+        m = 0;
+      }
+    }
+    
     webServer.handleClient();
     MDNS.update();
   }
+  Serial.print(m);
+  Serial.print(":");
+  Serial.print(s);
+  Serial.print(":");
+  Serial.print(ms);
+  Serial.print("\n");
 }
