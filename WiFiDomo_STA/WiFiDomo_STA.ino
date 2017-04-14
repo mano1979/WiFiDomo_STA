@@ -1,3 +1,24 @@
+/*
+Copyright 2016-2017 Mano Biletsky & Martijn van Leeuwen
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software 
+and associated documentation files (the "Software"), to deal in the Software without restriction, 
+including without limitation the rights to use, copy, modify, merge, publish, and to permit 
+persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or 
+substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR 
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, 
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. 
+IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, 
+DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, 
+ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+Written by: Mano Biletsky
+*/
+
 #include <EEPROM.h>
 
 #include <ESP8266WiFi.h>          //https://github.com/esp8266/Arduino
@@ -24,7 +45,7 @@ const int REDPIN = 4;   // Do not change!
 const int GREENPIN = 5; // Do not change!
 const int BLUEPIN = 12; // Do not change!
 const int SENSORPIN = 13; // Do not change!
-
+const int MODULEPIN = 14;
 int sensing = 0;
 int ms = 0;
 int s = 0;
@@ -127,23 +148,30 @@ String webpage = "<!DOCTYPE html><html><head><title>RGB control</title><meta nam
                  " })();"
                  "</script></html>";
 
+void getTargets() {
+  for (int i = 0; i < 3; i++) {
+    String val = webServer.arg(i);
+    if (val != "") {
+      targetColor[i] = val.toInt() & 1023;
+    }
+  }
+}
+
 void handleRoot() {
   Serial.println("handle root..");
   int i;
-  for (i = 0; i < 3; i++) {
-    String val = webServer.arg(i);
-    if (val != "") {
-      targetColor[i] = val.toInt();
-    }
-  }
+  getTargets();
   adjustColor();
-  if((targetColor[0] == 1023) and (targetColor[1] == 1023) and (targetColor[2] == 1023)){
+  if ((currentColor[0] == 1023) and (currentColor[1] == 1023) and (currentColor[2] == 1023)){
     sensing = 0;
+    ms = 0;
+    s = 0;
+    m = 0;
   }
-  else{
-    colorMemR = targetColor[0];
-    colorMemG = targetColor[1];
-    colorMemB = targetColor[2];
+  if ((currentColor[0] != 1023) or (currentColor[1] != 1023) or (currentColor[2] != 1023)){
+    colorMemR = currentColor[0];
+    colorMemG = currentColor[1];
+    colorMemB = currentColor[2];
     sensing = 1;
   }
   webServer.send(200, "text/html", webpage); 
@@ -158,28 +186,38 @@ void handleStatus() {
 void handleSwitch() {
   int i;
   Serial.println("Handle Switch..");
-  for (i = 0; i < 3; i++) {
-    String val = webServer.arg(i);
-    if (val != "") {
-      targetColor[i] = val.toInt();
-    }
-  }
+  getTargets();
   webServer.send(200, "text/html");
   adjustColor();
-  if ((currentColor[0] != 0) and (currentColor[1] != 0) and (currentColor[2] != 0)){
+  if ((currentColor[0] == 1023) and (currentColor[1] == 1023) and (currentColor[2] == 1023)){
+    sensing = 0;
+    ms = 0;
+    s = 0;
+    m = 0;
+  }
+  if ((currentColor[0] != 1023) or (currentColor[1] != 1023) or (currentColor[2] != 1023)){
     colorMemR = currentColor[0];
     colorMemG = currentColor[1];
     colorMemB = currentColor[2];
     sensing = 1;
   }
-  else{
-    sensing = 0;
+}
+
+//Quick-set function thanks to Klaas van Gend (kaa-ching)
+void handleSet(){ 
+  Serial.println("handle Set..");
+  getTargets();
+  for (int i = 0; i < 3; i++) {
+    currentColor[i] = targetColor[i];
+    analogWrite(colorPin[i], 1023-currentColor[i]);
   }
+  sensing = 0; // Turning off the sensor in the quick-set mode
+  handleStatus();
 }
 
 void sensorTriggered(){
   Serial.println("triggered!");
-  //if ((currentColor[0] == 0) and (currentColor[1] == 0) and (currentColor[2] == 0)){
+  //if ((currentColor[0] == 0) and (currentColor[1] == 0) and (currentColor[2] == 0)){ //Not sure if this works or not!
   targetColor[0] = colorMemR;
   targetColor[1] = colorMemG;
   targetColor[2] = colorMemB;
@@ -187,7 +225,6 @@ void sensorTriggered(){
   s = 0;
   m = 0;
   adjustColor();
-  //}
 }
 
 void timeToOff(){
@@ -223,15 +260,14 @@ void setup() {
   // put your setup code here, to run once:
   Serial.begin(115200);
   Serial.println("\n Starting");
-
   EEPROM.begin(4);
-
   int i;
   for (i = 0; i < NR_LEN; i++)
      savedNr[i] = EEPROM.read(i);
 
   pinMode(TRIGGER_PIN, INPUT);
   pinMode(SENSORPIN, INPUT);
+  pinMode(MODULEPIN, INPUT);
 }
 
 void checkAndSaveNr(const char *newNr) {
@@ -267,14 +303,10 @@ void loop() {
   if ( digitalRead(TRIGGER_PIN) == LOW ) {
     Mode = 0;
     //WiFiManager
-    //Local intialization. Once its business is done, there is no need to keep it around
-
-    //reset settings - for testing
+    //reset settings
     wifiManager.resetSettings();
-
-wifiManager.addParameter(&custom_host_nr);
-wifiManager.addParameter(&custom_host_nr_choice);
-
+    wifiManager.addParameter(&custom_host_nr);
+    wifiManager.addParameter(&custom_host_nr_choice);
     analogWrite(REDPIN, 1023);
     //and goes into a blocking loop awaiting configuration
     if (!wifiManager.startConfigPortal("WiFiDomo")) {
@@ -284,7 +316,6 @@ wifiManager.addParameter(&custom_host_nr_choice);
       ESP.reset();
       delay(5000);
     }
-
     checkAndSaveNr(custom_host_nr.getValue());
     //if you get here you have connected to the WiFi
     Serial.println("connected...yeey :)");
@@ -323,15 +354,18 @@ wifiManager.addParameter(&custom_host_nr_choice);
     webServer.on("/", handleRoot);
     webServer.on("/status", handleStatus);
     webServer.on("/switch", handleSwitch);
+    webServer.on("/set", handleSet);
     webServer.begin();
     testRGB();
     Mode = 1;
     MDNS.update();
   }
   if(Mode == 1){
-    sensing = 1;
+    if(digitalRead(MODULEPIN) == HIGH){ //If module is active and installed then...
+      sensing = 0;
+    }
     if(sensing == 1){
-      if(digitalRead(SENSORPIN)==HIGH){
+      if(digitalRead(SENSORPIN)==HIGH){ 
         sensorTriggered();
         delay(1000); //debounce
       }
@@ -349,15 +383,14 @@ wifiManager.addParameter(&custom_host_nr_choice);
         timeToOff();
         m = 0;
       }
+      Serial.print(m);
+      Serial.print(":");
+      Serial.print(s);
+      Serial.print(":");
+      Serial.print(ms);
+      Serial.print("\n");
     }
-    
-    webServer.handleClient();
-    MDNS.update();
   }
-  Serial.print(m);
-  Serial.print(":");
-  Serial.print(s);
-  Serial.print(":");
-  Serial.print(ms);
-  Serial.print("\n");
+  webServer.handleClient();
+  MDNS.update();
 }
